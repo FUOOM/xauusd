@@ -2,3 +2,8 @@
 - News event filter
 - Volatility-based position sizing
 - Correlation hedging
+
+Volume confirmation to ensure signals occur during high activity periods.
+Higher timeframe analysis to align with broader trends.
+Divergence detection between price and RSI for stronger mean reversion signals.
+Incorporating other indicators like MACD or Bollinger Bands for additional confirmation.
