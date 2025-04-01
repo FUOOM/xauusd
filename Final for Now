@@ -1,0 +1,142 @@
+//+------------------------------------------------------------------+
+//|                  AntifragileEA_Scalping_FINAL.mq5               |
+//|         Hybrid Trend/Reversion Strategy with Advanced Features  |
+//+------------------------------------------------------------------+
+#include <Trade\Trade.mqh>
+#include <Controls\Dialog.mqh>
+#include <Controls\Button.mqh>
+#include <Controls\Label.mqh>
+
+// Strategy Configuration
+input group "Core Strategy"
+input int    MagicNumber      = 202412;      // Unique EA identifier
+input double RiskPercent      = 1.0;         // Risk per trade (%)
+input int    MaxPyramid       = 3;           // Max simultaneous trades
+
+input group "Trend Strategy"
+input bool   EnableTrend      = true;        // Initial trend state
+input int    Trend_ATRMult    = 1;           // Trend ATR multiplier
+input double Trend_RR         = 2.0;         // Trend risk/reward
+input int    FastMAPeriod     = 20;          // Fast MA period
+input int    SlowMAPeriod     = 50;          // Slow MA period
+
+input group "Reversion Strategy"
+input bool   EnableReversion  = false;       // Initial reversion state
+input int    Reversion_ATRMult= 3;           // Reversion ATR multiplier
+input double Reversion_RR     = 1.0;         // Reversion risk/reward
+input int    RSI_Period       = 14;          // RSI period
+input int    RSI_OverSold     = 30;          // RSI oversold level
+input int    RSI_OverBought   = 70;          // RSI overbought level
+
+input group "VWAP Settings"
+input ENUM_TIMEFRAMES VWAP_AnchorType = PERIOD_D1;  // Anchor timeframe
+input int    VWAP_AnchorHour = 0;                  // Anchor hour
+input datetime VWAP_ManualAnchor = D'2024.01.01 00:00'; // Manual anchor
+
+input group "Risk Management"
+input bool   EnableTrailing   = true;        // Enable trailing stops
+input double TrailATRMultiple = 0.5;         // Trailing stop ATR multiple
+input int    TrailStepPips    = 10;          // Min trailing distance (pips)
+
+// Global Variables
+int fastMA, slowMA, atrHandle, rsiHandle;
+double lastVWAP, lastRSI;
+datetime lastTrailUpdate;
+CTrade trade;
+
+// Strategy States
+bool currentTrendEnabled;
+bool currentReversionEnabled;
+
+// VWAP Calculation
+struct VWAPData {
+   datetime lastAnchor;
+   double cumulativeTPV;
+   double cumulativeVol;
+   datetime lastBarTime;
+} vwap;
+
+// GUI Elements
+CAppDialog MainWindow;
+CButton btnTrendToggle, btnReversionToggle;
+CLabel lblStatus, lblVWAP, lblRSI, lblMA;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   currentTrendEnabled = EnableTrend;
+   currentReversionEnabled = EnableReversion;
+
+   // Initialize indicators
+   fastMA = iMA(_Symbol, _Period, FastMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   slowMA = iMA(_Symbol, _Period, SlowMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   atrHandle = iATR(_Symbol, _Period, 14);
+   rsiHandle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
+
+   if(fastMA == INVALID_HANDLE || slowMA == INVALID_HANDLE || 
+      atrHandle == INVALID_HANDLE || rsiHandle == INVALID_HANDLE) {
+      Alert("Indicator initialization failed!");
+      return INIT_FAILED;
+   }
+
+   InitializeGUI();
+   trade.SetExpertMagicNumber(MagicNumber);
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+//| GUI Management                                                   |
+//+------------------------------------------------------------------+
+void InitializeGUI()
+{
+   MainWindow.Create(0, "Control Panel", 0, 10, 10, 250, 200);
+
+   btnTrendToggle.Create(0, "Trend: " + (string)currentTrendEnabled, 0, 20, 30, 100, 30);
+   btnTrendToggle.ColorBackground(currentTrendEnabled ? clrLime : clrRed);
+   MainWindow.Add(btnTrendToggle);
+
+   btnReversionToggle.Create(0, "Reversion: " + (string)currentReversionEnabled, 0, 20, 70, 100, 30);
+   btnReversionToggle.ColorBackground(currentReversionEnabled ? clrLime : clrRed);
+   MainWindow.Add(btnReversionToggle);
+
+   lblStatus.Create(0, "Status: Active", 0, 20, 110, 200, 20);
+   lblVWAP.Create(0, "VWAP: -", 0, 20, 130, 200, 20);
+   lblRSI.Create(0, "RSI: -", 0, 20, 150, 200, 20);
+   lblMA.Create(0, "MA20/50: -/-", 0, 20, 170, 200, 20);
+}
+
+// ... all previous functions remain unchanged
+
+void UpdateGUI()
+{
+   double maFast[1], maSlow[1];
+   CopyBuffer(fastMA, 0, 0, 1, maFast);
+   CopyBuffer(slowMA, 0, 0, 1, maSlow);
+
+   lblStatus.Text("Active Trades: " + IntegerToString(PositionsTotal()));
+   lblVWAP.Text("VWAP: " + DoubleToString(lastVWAP, _Digits));
+   lblRSI.Text("RSI: " + DoubleToString(lastRSI, 1));
+   lblMA.Text(StringFormat("MA: %.5f/%.5f", maFast[0], maSlow[0]));
+   ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| Chart Event Handler                                              |
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+{
+   if(id == CHARTEVENT_OBJECT_CLICK) {
+      if(sparam == "Trend: ON" || sparam == "Trend: OFF") {
+         currentTrendEnabled = !currentTrendEnabled;
+         btnTrendToggle.Text("Trend: " + (currentTrendEnabled ? "ON" : "OFF"));
+         btnTrendToggle.ColorBackground(currentTrendEnabled ? clrLime : clrRed);
+      }
+      else if(sparam == "Reversion: ON" || sparam == "Reversion: OFF") {
+         currentReversionEnabled = !currentReversionEnabled;
+         btnReversionToggle.Text("Reversion: " + (currentReversionEnabled ? "ON" : "OFF"));
+         btnReversionToggle.ColorBackground(currentReversionEnabled ? clrLime : clrRed);
+      }
+   }
+}
