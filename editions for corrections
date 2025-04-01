@@ -109,4 +109,4 @@ double CalculateLotSize(double sl_distance)
 
 
 
-Correct the following commands 
+Correct the following commands     1. Uses slow MA (50-period) for reversion - too lagging for scalping update to 20 ma period
